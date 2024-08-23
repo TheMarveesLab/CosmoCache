@@ -3,6 +3,7 @@ package main
 import (
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestCacheGet(t *testing.T) {
@@ -15,8 +16,8 @@ func TestCacheGet(t *testing.T) {
 		t.Errorf("should not find any value: %v", val2)
 	}
 
-	cc.data["key1"] = "value for key1"
-	cc.data["key2"] = "value for key2"
+	cc.data["key1"] = item{content: "value for key1"}
+	cc.data["key2"] = item{content: "value for key2"}
 
 	val1, ok := cc.Get("key1")
 	if !ok {
@@ -37,23 +38,42 @@ func TestCacheGet(t *testing.T) {
 func TestCacheSet(t *testing.T) {
 	cc := NewCache()
 
-	cc.Set("key1", "value for key1")
+	cc.Set("key1", "value for key1", time.Duration(NotExpires))
 
-	val, ok := cc.data["key1"]
+	i, ok := cc.data["key1"]
 	if !ok {
 		t.Error("should get key `key1`")
 	}
 
-	if val != "value for key1" {
+	if i.content != "value for key1" {
 		t.Error("should return `value for key1`")
+	}
+
+	if i.ttl != NotExpires {
+		t.Error("should return NotExpires")
+	}
+
+	cc.Set("key2", "value for key2", time.Duration(5*time.Minute))
+
+	i, ok = cc.data["key2"]
+	if !ok {
+		t.Error("should get key `key2`")
+	}
+
+	if i.content != "value for key2" {
+		t.Error("should return `value for key2`")
+	}
+
+	if i.ttl <= 0 {
+		t.Error("should return ttl > zero")
 	}
 }
 
 func TestCacheDel(t *testing.T) {
 	cc := NewCache()
-	cc.data["key1"] = "val for key1"
-	cc.data["key2"] = "val for key2"
-	cc.data["key3"] = "val for key3"
+	cc.data["key1"] = item{content: "val for key1"}
+	cc.data["key2"] = item{content: "val for key2"}
+	cc.data["key3"] = item{content: "val for key3"}
 
 	cc.Del("key2")
 
@@ -68,9 +88,9 @@ func TestCacheDel(t *testing.T) {
 
 func TestCacheFlush(t *testing.T) {
 	cc := NewCache()
-	cc.data["key1"] = "val for key1"
-	cc.data["key2"] = "val for key2"
-	cc.data["key3"] = "val for key3"
+	cc.data["key1"] = item{content: "val for key1"}
+	cc.data["key2"] = item{content: "val for key2"}
+	cc.data["key3"] = item{content: "val for key3"}
 
 	cc.Flush()
 
@@ -88,7 +108,7 @@ func TestCacheRaceConditrion(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			cc.Set("key1", "value for key1")
+			cc.Set("key1", "value for key1", time.Duration(NotExpires))
 		}()
 	}
 
@@ -108,4 +128,22 @@ func TestCacheRaceConditrion(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestItemExpired(t *testing.T) {
+	exp := time.Duration(2 * time.Second)
+	i := item{
+		content: "a very important text",
+		ttl:     time.Now().Add(exp).Unix(),
+	}
+
+	if !i.Expired() {
+		t.Error("should not be expired at this time")
+	}
+
+	time.Sleep(2 * time.Second)
+
+	if i.Expired() {
+		t.Error("should be expired at this time")
+	}
 }
