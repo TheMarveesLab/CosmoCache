@@ -25,18 +25,27 @@ func (i item) Expired() bool {
 	if i.ttl == NotExpires {
 		return false
 	}
-	return time.Now().Unix() < i.ttl
+	now := time.Now().Unix()
+	return now > i.ttl
 }
 
 type cache struct {
 	mu   sync.RWMutex
 	data map[string]item
+
+	cleanupInterval time.Duration
+	stopCh          chan struct{}
 }
 
-func NewCache() *cache {
-	return &cache{
-		data: make(map[string]item, 0),
+func NewCache(cleanupInterval time.Duration) *cache {
+	cc := &cache{
+		data:            make(map[string]item, 0),
+		cleanupInterval: cleanupInterval,
 	}
+
+	go cc.start()
+
+	return cc
 }
 
 func (c *cache) Set(key string, val string, ttl time.Duration) error {
@@ -68,4 +77,29 @@ func (c *cache) Del(key string) {
 
 func (c *cache) Flush() {
 	c.data = make(map[string]item)
+}
+
+func (c *cache) start() {
+	ticker := time.NewTicker(c.cleanupInterval)
+	for {
+		select {
+		case <-ticker.C:
+			c.removeExpiredItems()
+		case <-c.stopCh:
+			ticker.Stop()
+			return
+		}
+	}
+}
+
+func (c *cache) Stop() {
+	c.stopCh <- struct{}{}
+}
+
+func (c *cache) removeExpiredItems() {
+	for k, v := range c.data {
+		if v.Expired() {
+			delete(c.data, k)
+		}
+	}
 }

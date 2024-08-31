@@ -7,7 +7,7 @@ import (
 )
 
 func TestCacheGet(t *testing.T) {
-	cc := NewCache()
+	cc := NewCache(5 * time.Millisecond)
 
 	if val1, ok := cc.Get("key1"); ok {
 		t.Errorf("should not find any value: %v", val1)
@@ -36,7 +36,7 @@ func TestCacheGet(t *testing.T) {
 }
 
 func TestCacheSet(t *testing.T) {
-	cc := NewCache()
+	cc := NewCache(5 * time.Millisecond)
 
 	cc.Set("key1", "value for key1", time.Duration(NotExpires))
 
@@ -70,7 +70,7 @@ func TestCacheSet(t *testing.T) {
 }
 
 func TestCacheDel(t *testing.T) {
-	cc := NewCache()
+	cc := NewCache(5 * time.Millisecond)
 	cc.data["key1"] = item{content: "val for key1"}
 	cc.data["key2"] = item{content: "val for key2"}
 	cc.data["key3"] = item{content: "val for key3"}
@@ -87,7 +87,7 @@ func TestCacheDel(t *testing.T) {
 }
 
 func TestCacheFlush(t *testing.T) {
-	cc := NewCache()
+	cc := NewCache(5 * time.Millisecond)
 	cc.data["key1"] = item{content: "val for key1"}
 	cc.data["key2"] = item{content: "val for key2"}
 	cc.data["key3"] = item{content: "val for key3"}
@@ -100,7 +100,7 @@ func TestCacheFlush(t *testing.T) {
 }
 
 func TestCacheRaceConditrion(t *testing.T) {
-	cc := NewCache()
+	cc := NewCache(5 * time.Millisecond)
 
 	var wg sync.WaitGroup
 
@@ -137,13 +137,32 @@ func TestItemExpired(t *testing.T) {
 		ttl:     time.Now().Add(exp).Unix(),
 	}
 
-	if !i.Expired() {
+	if i.Expired() {
 		t.Error("should not be expired at this time")
+	}
+
+	time.Sleep(3 * time.Second)
+
+	if !i.Expired() {
+		t.Error("should be expired at this time")
+	}
+}
+
+func TestRemoveExpiredItems(t *testing.T) {
+	cc := NewCache(5 * time.Millisecond)
+	cc.Set("key1", "val 2 sec", 2*time.Second)
+	cc.Set("key2", "val 3 sec", 3*time.Second)
+	cc.Set("key3", "val 5 sec", 5*time.Second)
+
+	time.Sleep(4 * time.Second)
+
+	if len(cc.data) != 1 {
+		t.Errorf("shoudl have 1 item and got %d", len(cc.data))
 	}
 
 	time.Sleep(2 * time.Second)
 
-	if i.Expired() {
-		t.Error("should be expired at this time")
+	if len(cc.data) != 0 {
+		t.Errorf("shoudl have 0 item and got %d", len(cc.data))
 	}
 }
